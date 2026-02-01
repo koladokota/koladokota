@@ -39,3 +39,29 @@ sudo apt install python3-venv python3-pip
 ```
 pip install torch numpy pandas buffer tensorflow typing_extensions
 ```
+
+# Run with ns-3 (example paths)
+Assuming:
+- ns-3 is in `~/ns-3-mmwave-oran`
+- this repo is in `~/RL-NS3`
+
+1) Copy the scenario into ns-3:
+```
+cp ~/RL-NS3/scratch/x2-handover-5g.cc ~/ns-3-mmwave-oran/scratch/
+```
+
+2) Build ns-3:
+```
+cd ~/ns-3-mmwave-oran
+./waf configure
+./waf build
+```
+
+3) Run the RL script with the correct paths:
+```
+cd ~/RL-NS3
+export COMBINED_DATA_PATH=~/RL-NS3
+export DATA_PATH=~/ns-3-mmwave-oran
+export NUMBER_OF_NODES=3
+python3 qlearning.py
+```
