@@ -38,6 +38,12 @@
 #include "ns3/netanim-module.h"
 #include <random>
 #include <iostream>
+#include <fstream>
+#include <cstdlib>
+#include <string>
+#include "ns3/antenna-module.h"
+#include "ns3/spectrum-module.h"   // если дальше будут ругаться на 3gpp channel/spectrum
+
 using namespace ns3;
 using namespace mmwave;
 
@@ -387,6 +393,45 @@ static ns3::GlobalValue g_controlFileName ("controlFileName",
                                            "The path to the control file (can be absolute)",
                                            ns3::StringValue (""),
                                            ns3::MakeStringChecker ());
+static bool
+CopyFile(const std::string& src, const std::string& dst)
+{
+  std::ifstream in(src, std::ios::binary);
+  if (!in.is_open())
+    {
+      return false;
+    }
+  std::ofstream out(dst, std::ios::binary | std::ios::trunc);
+  if (!out.is_open())
+    {
+      return false;
+    }
+  out << in.rdbuf();
+  return out.good();
+}
+
+static void
+MaterializePerNodeFilesFromCommon(const std::string& commonFile,
+                                  const std::string& perNodePrefix,
+                                  int numNodes,
+                                  int nodeIdOffset)
+{
+  for (int i = 0; i < numNodes; ++i)
+  {
+    int nodeId = nodeIdOffset + i;
+    std::string dst = perNodePrefix + std::to_string(nodeId) + ".txt";
+    bool ok = CopyFile(commonFile, dst);
+    if (!ok)
+    {
+      std::cout << "WARN: cannot copy " << commonFile << " -> " << dst << std::endl;
+    }
+    else
+    {
+      std::cout << "Created " << dst << " from " << commonFile << std::endl;
+    }
+  }
+}
+
 
 int
 main (int argc, char *argv[])
@@ -505,10 +550,9 @@ main (int argc, char *argv[])
   //Config::SetDefault ("ns3::MmWaveBearerStatsCalculator::EpochDuration", TimeValue (MilliSeconds (10.0)));
 
   // set to false to use the 3GPP radiation pattern (proper configuration of the bearing and downtilt angles is needed)
-  Config::SetDefault ("ns3::ThreeGppAntennaArrayModel::IsotropicElements", BooleanValue (true));
-  Config::SetDefault ("ns3::ThreeGppChannelModel::UpdatePeriod", TimeValue (MilliSeconds (100.0)));
-  Config::SetDefault ("ns3::ThreeGppChannelConditionModel::UpdatePeriod",
-                      TimeValue (MilliSeconds (100)));
+  //Config::SetDefault ("ns3::ThreeGppAntennaArrayModel::IsotropicElements", BooleanValue (true));
+  //Config::SetDefault ("ns3::ThreeGppChannelModel::UpdatePeriod", TimeValue (MilliSeconds (100.0)));
+  //Config::SetDefault ("ns3::ThreeGppChannelConditionModel::UpdatePeriod",TimeValue (MilliSeconds (100)));
 
   Config::SetDefault ("ns3::LteRlcAm::ReportBufferStatusTimer", TimeValue (MilliSeconds (10.0)));
   Config::SetDefault ("ns3::LteRlcUmLowLat::ReportBufferStatusTimer",
@@ -544,8 +588,8 @@ main (int argc, char *argv[])
                             << " numAntennasMmWave " << numAntennasMmWave);
 
   // Set the number of antennas in the devices
-  Config::SetDefault ("ns3::McUeNetDevice::AntennaNum", UintegerValue (numAntennasMcUe));
-  Config::SetDefault ("ns3::MmWaveNetDevice::AntennaNum", UintegerValue (numAntennasMmWave));
+  //Config::SetDefault ("ns3::McUeNetDevice::AntennaNum", UintegerValue (numAntennasMcUe));
+  //Config::SetDefault ("ns3::MmWaveNetDevice::AntennaNum", UintegerValue (numAntennasMmWave));
   Config::SetDefault ("ns3::MmWavePhyMacCommon::Bandwidth", DoubleValue (bandwidth));
   Config::SetDefault ("ns3::MmWavePhyMacCommon::CenterFreq", DoubleValue (centerFrequency));
 
@@ -867,10 +911,33 @@ main (int argc, char *argv[])
       Simulator::Stop (simTime);
       NS_LOG_INFO ("Run Simulation.");
       Simulator::Run ();
+        
+
     }
 
   NS_LOG_INFO (lteHelper);
   Simulator::Destroy ();
+  
+  // === Make per-node files for DataCombiner compatibility ===
+  // DataCombiner expects cu-cp-cell-<nodeId>.txt starting from nodeIdOffset=2
+  // Default in your DataCombiner: NUMBER_OF_NODES=3, nodeIdOffset=2 -> 2,3,4
+  int numNodes = 3;
+  int nodeIdOffset = 2;
+
+  // Allow override from env NUMBER_OF_NODES (same as DataCombiner)
+  const char* envN = std::getenv("NUMBER_OF_NODES");
+  if (envN != nullptr)
+    {
+      try { numNodes = std::stoi(envN); }
+      catch (...) {}
+    }
+
+  // CU-CP
+  MaterializePerNodeFilesFromCommon("cu-cp-cell-common.txt", "cu-cp-cell-", numNodes, nodeIdOffset);
+
+  // If someday you also have these common files, you can enable too:
+  // MaterializePerNodeFilesFromCommon("cu-up-cell-common.txt", "cu-up-cell-", numNodes, nodeIdOffset);
+  // MaterializePerNodeFilesFromCommon("du-cell-common.txt", "du-cell-", numNodes, nodeIdOffset);
   NS_LOG_INFO ("Done.");
   return 0;
 }
